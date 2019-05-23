@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+set -e
+
+
+# generate buildID bases on organisation naming conventions
+get_build_type_id(){
+
+    if [ $# -lt 3 ] ; then
+        echo "Usage: $0 <system> <type> <suffix>"
+        exit 1
+    fi
+
+
+    sys=$1
+    type=$2
+    suffix=$3
+    team=$4
+
+    case $sys in
+
+        ## Project
+        'serviceA')                echo "Ops_$sys_${type}_${suffix}" ;;
+        'serviceB')                echo "Dev_serviceB_${type}_${suffix}" ;;
+
+        *)                    echo "${team}_${sys}_${type}_${suffix}" ;;
+    esac
+
+}
+
+
+get_vcs_id(){
+    if [ $# -lt 1 ] ; then
+        echo "Usage: $0 <system>"
+        exit 1
+    fi
+
+    sys=$1
+    suffix=$2
+
+    local basename
+    case $sys in
+
+        ## Team
+        #
+        'serviceA')          basename="Ops_Claims" ;;
+        'serviceB')          basename="Ops_Addresses" ;;
+
+        # lazy defining
+        # ProjectLvl1_projectLVL2
+        *)                   basename="Ops_${sys}" ;;
+    esac
+
+    if [[ -z "$suffix" ]]; then
+      echo $basename
+    else
+      echo "${basename}${suffix}"
+    fi
+}
