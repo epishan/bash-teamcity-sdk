@@ -64,6 +64,26 @@ function _build_config_add_vcs() {
     return 1
   fi
 
+
+
+
+}
+
+function _build_config_attach_template() {
+  set -e
+  local BUILD_TYPE_ID=$1
+  local TEMPLATE_ID=$2
+
+  resp=$(curl -ns -0 -o /dev/null -w "%{http_code}" -X PUT "${TC_API_URL}/buildTypes/${BUILD_TYPE_ID}/template " \
+  -H "Content-Type: text/plain" -d "$TEMPLATE_ID")
+
+  echo
+
+  if [ $resp != 200 ]; then
+    echo "[ERROR] Couldn't add $TEMPLATE_ID"
+    return 1
+  fi
+
 }
 
 function _build_config_get_vcs() {
@@ -148,6 +168,7 @@ function _put_vcs_property {
   curl -ns -0 -X PUT  "${TC_API_URL}/vcs-roots/$VCS_ID/properties/$VCS_PROPERTY" -d "$PROPERTY_VALUE" \
              -H "Content-Type: text/plain"
 }
+
 
 
 function replace_vcs_property() {
