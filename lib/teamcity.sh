@@ -2,6 +2,50 @@
 set -e
 
 
+
+function _check_project() {
+
+  local PROJECT_TYPE=$1
+  local PROJECT_ID=$2
+  local PARENT_PROJECT_ID=$3
+
+
+  resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/projects/id:$PARENT_PROJECT_ID")
+  if [ $resp != 200 ]; then
+    echo "❌ Parent Project with ID:$PARENT_PROJECT_ID doesn't exists"
+    return
+  fi
+
+  resp=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/projects/id:$PARENT_PROJECT_ID" | jq '."projects"."project"[] | .name')
+  if echo "$resp"|grep -q "$PROJECT_TYPE"; then
+    echo "✅ Project with name: '$PROJECT_TYPE' exists in parent project"
+  else
+    echo "❌ Project with name: '$PROJECT_TYPE' doesn't exists in parent project"
+  fi
+
+  resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/projects/id:$PROJECT_ID")
+  if [ $resp == 200 ]; then
+    echo "✅ Project with expected ID:$PROJECT_ID exists"
+  else
+    echo "❌ Project with name: ID:$PROJECT_ID doesn't exists in parent project"
+    return
+  fi
+
+  build_ids=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/projects/id:$PROJECT_ID/buildTypes" | jq -r '."buildType"[] | .id ')
+
+  for id in $build_ids; do
+    echo -n "::  $id  "
+    features=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features" | jq -r '."feature"[] | .type' )
+    for f in $features; do
+      if [ $f == "commit-status-publisher" ]; then
+         echo "⚠️ found commit-status-publisher"
+         curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features" | jq '.' | grep -A1 vcsRootId
+      fi
+    done
+  done
+
+}
+
 function _copy_project() {
 
   local PROJECT_NAME=$1
@@ -9,24 +53,6 @@ function _copy_project() {
   local SRC_PROJECT_ID=$3
   local PARENT_PROJECT_ID=$4
 
-
-  resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/projects/id:$PARENT_PROJECT_ID")
-  if [ $resp != 200 ]; then
-    echo "Parent Project with ID:$PARENT_PROJECT_ID doesn't exists, skipping"
-    exit
-  fi
-
-  resp=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/projects/id:$PARENT_PROJECT_ID" | jq '."projects"."project"[] | .name')
-  if echo "$resp"|grep "$PROJECT_NAME"; then
-    echo "Project with name: '$PROJECT_NAME' already exists in parent project, skipping"
-    return
-  fi
-
-  resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/projects/id:$PROJECT_ID")
-  if [ $resp == 200 ]; then
-    echo "Target Project with ID:$PROJECT_ID already exists, skipping"
-    return
-  fi
 
   resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/projects/id:$SRC_PROJECT_ID")
   if [ $resp != 200 ]; then
@@ -38,6 +64,26 @@ function _copy_project() {
             -H "Content-Type:application/xml" \
             -d "<newProjectDescription name='$PROJECT_NAME' id='$PROJECT_ID' copyAllAssociatedSettings='true'><parentProject locator='id:$PARENT_PROJECT_ID'/><sourceProject locator='id:$SRC_PROJECT_ID'/></newProjectDescription>"
   echo "Project $PROJECT_NAME copied with ID:$PROJECT_ID"
+
+}
+
+function attach_commit_publisher() {
+  local BUILD_TYPE_ID=$1
+  local VCS_ID=$2
+
+  curl -n -0 -X POST "${TC_API_URL}/buildTypes/${BUILD_TYPE_ID}/features" \
+  -H 'Content-Type:application/json'  \
+  -d "{\"type\":\"commit-status-publisher\",\"properties\":{\"count\":5,\"property\":[{\"name\":\"publisherId\",\"value\":\"atlassianStashPublisher\"},{\"name\":\"secure:stashPassword\"},{\"name\":\"stashBaseUrl\",\"value\":\"https://bitbucket.lzd.co\"},{\"name\":\"stashUsername\",\"value\":\"lel-devops\"},{\"name\":\"vcsRootId\",\"value\":\"$VCS_ID\"}]}}"
+
+}
+
+function replace_commit_publisher() {
+  local BUILD_TYPE_ID=$1
+  local FEATURE_ID=$2
+
+  curl -n -0 -X PUT "${TC_API_URL}/buildTypes/${BUILD_TYPE_ID}/features" \
+  -H 'Content-Type:application/json'  \
+  -d "{\"id\": \"$FEATURE_ID\",\"type\":\"commit-status-publisher\",\"properties\":{\"count\":5,\"property\":[{\"name\":\"publisherId\",\"value\":\"atlassianStashPublisher\"},{\"name\":\"secure:stashPassword\"},{\"name\":\"stashBaseUrl\",\"value\":\"https://bitbucket.lzd.co\"},{\"name\":\"stashUsername\",\"value\":\"lel-devops\"},{\"name\":\"vcsRootId\",\"value\":\"$VCS_ID\"}]}}"
 
 }
 
@@ -64,9 +110,6 @@ function _build_config_add_vcs() {
     return 1
   fi
 
-
-
-
 }
 
 function _build_config_attach_template() {
@@ -89,9 +132,8 @@ function _build_config_attach_template() {
 function _build_config_get_vcs() {
   set -e
   local BUILD_TYPE_ID=$1
-  local VCS_ID=$2
 
-  curl -n -0 -X GET "${TC_API_URL}/buildTypes/${BUILD_TYPE_ID}/vcs-root-entries" \
+  curl -ns -0 -X GET "${TC_API_URL}/buildTypes/${BUILD_TYPE_ID}/vcs-root-entries" \
   -H 'Accept:application/json'
 
 }
@@ -239,6 +281,65 @@ function setup_new_projects() {
         _build_config_add_vcs $build_type_id $vcs_id_role
     done
     echo
+  done
+
+}
+
+function check_projects() {
+
+  team=$1
+  shift
+  systems=$@
+
+  for sys in $systems; do
+    echo "💾 sys: $sys"
+    JOB_TYPES="Deploy Misc CI Showrooms"
+    JOB_TYPES="CI"
+    for job_type in $JOB_TYPES; do
+       _check_project "$job_type" "Lel_${team}_${sys}_${job_type}" "Lel_${team}_${sys}" # job_type job_id project
+    done
+
+
+  done
+
+}
+
+
+function check_builds() {
+
+  build_ids=$@
+
+  for id in $build_ids; do
+
+    resp=$(curl -ns -0 -I -X GET -o /dev/null -w "%{http_code}" "${TC_API_URL}/buildTypes/id:$id")
+    if [ $resp != 200 ]; then
+      echo "❌ Build with name: ID:$id doesn't exists"
+    else
+      echo -n "::  $id  "
+      csp_found=0
+      features=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features" | jq -r '."feature"[] | .type' )
+      for f in $features; do
+        if [ $f == "commit-status-publisher" ]; then
+           csp_found=1
+           echo -n "⚠️ found commit-status-publisher with vcs_root ::: "
+           res=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .properties.property[] | select (."name" | contains ("vcsRootId") ) | .value' )
+           if [ "$res" == "" ]; then
+              echo "❌  EMPTY"
+              feature_id=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .id ')q
+              replace_commit_publisher $id $feature_id
+           else
+             echo "$res"
+           fi
+        fi
+      done
+      if [ $csp_found -eq 0 ]; then
+        echo "❌  commit-status-publisher not found"
+        vcs_id=$(_build_config_get_vcs $id | jq -r '."vcs-root-entry"[] | .id')
+        attach_commit_publisher $id $vcs_id
+      fi
+
+    fi
+
   done
 
 }
