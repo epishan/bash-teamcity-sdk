@@ -322,11 +322,13 @@ function check_builds() {
         if [ $f == "commit-status-publisher" ]; then
            csp_found=1
            echo -n "⚠️ found commit-status-publisher with vcs_root ::: "
-           res=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .properties.property[] | select (."name" | contains ("vcsRootId") ) | .value' )
+           #res=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .properties.property[] | select (."name" | contains ("vcsRootId") ) | .value' )
+           res=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) ' )
+
            if [ "$res" == "" ]; then
               echo "❌  EMPTY"
-              feature_id=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .id ')q
-              replace_commit_publisher $id $feature_id
+              feature_id=$(curl -ns -0 -X GET -H 'Accept:application/json' "${TC_API_URL}/buildTypes/id:$id/features/" |  jq -r '."feature"[] | select (."type" | contains ("publish") ) | .id ')
+              #replace_commit_publisher $id $feature_id
            else
              echo "$res"
            fi
@@ -335,7 +337,7 @@ function check_builds() {
       if [ $csp_found -eq 0 ]; then
         echo "❌  commit-status-publisher not found"
         vcs_id=$(_build_config_get_vcs $id | jq -r '."vcs-root-entry"[] | .id')
-        attach_commit_publisher $id $vcs_id
+        #attach_commit_publisher $id $vcs_id
       fi
 
     fi
