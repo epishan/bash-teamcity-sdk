@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -e
+
+
+source config/teamcity.config
+source lib/teamcity.sh
+source project_settings/generators.sh
+
+
+### your custom code here
+
+# SYSTEMS="tps shipments airflow"
+# BUILD_TYPE_IDS="Ops_DeployInOpsCluster Ops_KubernetesClusterDeployment_Deploy Ops_KubernetesClusterDeployment_AliStaging_Deploy"
+#
+# for build_type_id in $BUILD_TYPE_IDS; do
+#   for sys in $SYSTEMS; do
+#      vcs_id=$(get_vcs_id $sys)
+#      _delete_vcs $build_type_id $vcs_id
+#        vcs_id=$(get_vcs_id $sys "role")
+#        _delete_vcs $build_type_id $vcs_id
+#   done
+# done
+
+
+
+TEAM_X_SYSTEMS="sysA sysB sysC"
+TEAM_Y_SYSTEMS="sysD"
+TEAM_Z_SYSTEMS="sysE sysSh"
+
+
+#setup_new_projects TEAM_X $TEAM_X_SYSTEMS
+
+#check_projects TEAM_Y $TEAM_Y_SYSTEMS
+
+#_build_config_attach_template sysAid VCSid
+
+# ALL_VCS=$(get_all_vcs)
+# for id in $ALL_VCS; do
+#   _get_vcs_property $id "url"; echo "  $id";
+# done
